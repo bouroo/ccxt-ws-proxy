@@ -1,0 +1,9 @@
+kucoin:
+  rest:
+    host: "https://api.kucoin.com"
+    endpoint:
+      bullet-public: "/api/v1/bullet-public"
+      bullet-private: "/api/v1/bullet-private"
+  websocket:
+    host: "wss://push1-v2.kucoin.com"
+    endpoint: "/endpoint?token=%s&connectId=%s"
