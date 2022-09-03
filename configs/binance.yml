@@ -1,0 +1,12 @@
+biance:
+  rest:
+    host: "https://api.binance.com"
+    endpoint:
+      ping: "/api/v3/ping"
+      time: "/api/v3/time"
+      exchangeInfo: "/api/v3/exchangeInfo"
+      kline: "/api/v3/klines"
+  websocket:
+    host: "wss://stream.binance.com:9443"
+    endpoint:
+      kline: "/ws/%s"
