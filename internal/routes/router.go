@@ -2,16 +2,23 @@ package routes
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/zercle/gofiber-skelton/internal/handlers"
+	"github.com/zercle/ccxt-proxy/internal/handlers"
 )
 
 // SetupRoutes is the Router for GoFiber App
-func (r *RouterResources) SetupRoutes(app *fiber.App) {
+func SetupRoutes(app *fiber.App) {
 
 	app.Get("/", handlers.Index())
 
-	groupApiV1 := app.Group("/api/v:version?", apiLimiter)
+	// binance
+	groupBinance := app.Group("/binance")
 	{
-		groupApiV1.Get("/", handlers.Index())
+		groupBinance.Get("/", handlers.Index())
+	}
+
+	// kucoin
+	groupKucoin := app.Group("/kucoin")
+	{
+		groupKucoin.Get("/", handlers.Index())
 	}
 }

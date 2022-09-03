@@ -8,12 +8,12 @@ go-build:
 
 docker-build:
 	docker build -f ./build/Dockerfile.local \
-	-t zercle/gofiber-skeleton:latest \
+	-t zercle/ccxt-proxy:latest \
 	--pull \
 	.
 
 docker-save:
-	docker save zercle/gofiber-skeleton | gzip > dist/zercle-gofiber-skeleton.tar.gz
+	docker save zercle/ccxt-proxy | gzip > dist/zercle-ccxt-proxy.tar.gz
 
 docker-clean:
 	docker image prune -f

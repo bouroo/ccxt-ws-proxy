@@ -1,13 +1,11 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"syscall"
 	"time"
 
@@ -15,49 +13,30 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/segmentio/encoding/json"
 	"github.com/spf13/viper"
+	"github.com/zercle/ccxt-proxy/configs"
+	"github.com/zercle/ccxt-proxy/internal/datasources"
+	"github.com/zercle/ccxt-proxy/internal/routes"
 	helpers "github.com/zercle/gofiber-helpers"
-	"github.com/zercle/gofiber-skelton/configs"
-	"github.com/zercle/gofiber-skelton/internal/datasources"
-	"github.com/zercle/gofiber-skelton/internal/routes"
 )
 
 // PrdMode from GO_ENV
 var (
-	PrdMode    bool
-	version    string
-	build      string
-	sessConfig session.Config
-	logConfig  logger.Config
-	runEnv     string
+	version string
+	build   string
 )
 
 func main() {
 	var err error
-	// Running flag
-	if len(os.Getenv("ENV")) != 0 {
-		runEnv = os.Getenv("ENV")
-	} else {
-		flagEnv := flag.String("env", "dev", "A config file name without .env")
-		flag.Parse()
-		runEnv = *flagEnv
-	}
-	if err := configs.LoadConfig(runEnv); err != nil {
+
+	// load config
+	if err = configs.LoadConfig("default"); err != nil {
 		log.Panicf("error while loading the env:\n %+v", err)
 	}
 
-	PrdMode = (viper.GetString("app.env") == "production")
-
 	// Init datasources
-	err = initDatasources()
-	if err != nil {
-		log.Panicf("error while init datasources:\n %+v", err)
-	}
-
-	// datasource resources
-	resources := datasources.InitResources(datasources.MariaDbConn)
+	InitDataSources()
 
 	// Init app
 	log.Printf("init app")
@@ -65,30 +44,23 @@ func main() {
 		ErrorHandler:   customErrorHandler,
 		ReadTimeout:    60 * time.Second,
 		ReadBufferSize: 8 * 1024,
-		Prefork:        PrdMode,
+		Prefork:        true,
 		// speed up json with segmentio/encoding
 		JSONEncoder: json.Marshal,
 		JSONDecoder: json.Unmarshal,
 	})
 
-	// Post config by env
-	err = configApp()
-	if err != nil {
-		log.Panicf("error while config app:\n %+v", err)
-	}
-
 	// Logger middleware for Fiber that logs HTTP request/response details.
-	app.Use(logger.New(logConfig))
+	app.Use(logger.New())
 
 	// Recover middleware for Fiber that recovers from panics anywhere in the stack chain and handles the control to the centralized ErrorHandler.
-	app.Use(recover.New(recover.Config{EnableStackTrace: !PrdMode}))
+	app.Use(recover.New())
 
 	// CORS middleware for Fiber that that can be used to enable Cross-Origin Resource Sharing with various options.
 	app.Use(cors.New())
 
-	// set apiV1 router
-	routerResources := routes.InitRouterResources(resources)
-	routerResources.SetupRoutes(app)
+	// set api router
+	routes.SetupRoutes(app)
 
 	// Log GO_ENV
 	log.Printf("Runtime ENV: %s", viper.GetString("app.env"))
@@ -97,7 +69,7 @@ func main() {
 
 	// Listen from a different goroutine
 	go func() {
-		if err := app.ListenTLS(":"+viper.GetString("app.port.https"), viper.GetString("app.path.cert"), viper.GetString("app.path.priv")); err != nil {
+		if err := app.Listen(":"+viper.GetString("app.port.http")); err != nil {
 			log.Panic(err)
 		}
 	}()
@@ -151,111 +123,8 @@ var customErrorHandler = func(c *fiber.Ctx, err error) error {
 	return nil
 }
 
-func initDatasources() (err error) {
-
-	// maxDBConn := 8
-	// maxDBIdle := 4
-	// Pre config by env
-	// if !PrdMode {
-	// 	maxDBConn = 2
-	// 	maxDBIdle = 1
-	// }
-
-	// Init database connection
-	datasources.ConnSqlLite, err = datasources.NewSQLite("book.db")
-
-	// Init database connection
-	// Create connection to database
-	// log.Printf("connecting to %s/%s", viper.GetString("db.main.host"), viper.GetString("db.main.db_name"))
-	// dbConfig := datasources.MariadbConfig{
-	// 	Username:     viper.GetString("db.main.username"),
-	// 	Password:     viper.GetString("db.main.password"),
-	// 	Host:         viper.GetString("db.main.host"),
-	// 	Port:         viper.GetString("db.main.port"),
-	// 	MaxIdleConns: maxDBIdle,
-	// 	MaxOpenConns: maxDBConn,
-	// 	ParseTime:    true,
-	// }
-	// if _, err := os.Stat(viper.GetString("db.main.sock")); err == nil {
-	// 	dbConfig.UnixSocket = viper.GetString("db.main.sock")
-	// 	log.Printf("connecting by %s", dbConfig.UnixSocket)
-	// }
-	// connMariaDB, err := dbConfig.NewMariaDB(viper.GetString("db.main.db_name"))
-	// if err != nil {
-	// 	log.Panicf("Error Connect to database:\n %+v", err)
-	// }
-	// log.Printf("connected to %s/%s", viper.GetString("db.main.host"), viper.GetString("db.main.db_name"))
-
-	// datasources.MariaDbConn = connMariaDB
-
-	// Create connection to redis
-	// log.Printf("connecting to %s/%s", viper.GetString("db.redis.host"), viper.GetString("db.redis.db_name"))
-	// redisPort, err := strconv.Atoi(viper.GetString("db.redis.port"))
-	// if err != nil {
-	// 	redisPort = 6379
-	// 	err = nil
-	// }
-	// redisDB, err := strconv.Atoi(viper.GetString("db.redis.db_name"))
-	// if err != nil {
-	// 	redisDB = 0
-	// 	err = nil
-	// }
-	// datasources.RedisStore = redis.New(redis.Config{
-	// 	Host:     viper.GetString("db.redis.host"),
-	// 	Port:     redisPort,
-	// 	Username: viper.GetString("db.redis.username"),
-	// 	Password: viper.GetString("db.redis.password"),
-	// 	Database: redisDB,
-	// })
-	// log.Printf("connected to %s/%s", viper.GetString("db.redis.host"), viper.GetString("db.redis.db_name"))
-
-	// Init JWT Key
-	log.Printf("init JWT")
-	jwtSignKey, jwtVerifyKey, jwtSigningMethod, err := datasources.JTWLocalKey(viper.GetString("jwt.private"), viper.GetString("jwt.public"))
-	if err != nil {
-		log.Panicf("Error Init JWT Keys:\n %+v", err)
-	}
-	log.Printf("init JWT %s done", jwtSigningMethod.Alg())
-
-	datasources.JWTSignKey = &jwtSignKey
-	datasources.JWTVerifyKey = &jwtVerifyKey
-	datasources.JWTSigningMethod = &jwtSigningMethod
-
-	// Init Client
-	log.Printf("init client")
+func InitDataSources() (err error) {
 	datasources.FastHttpClient = datasources.InitFasthttpClient()
 	datasources.JsonParserPool = datasources.InitJsonParserPool()
-	datasources.RegxNum = regexp.MustCompile(`[0-9]+`)
-	log.Printf("init client done")
-
-	return
-}
-
-func configApp() (err error) {
-	if PrdMode {
-		sessConfig = session.Config{
-			Expiration:     8 * time.Hour,
-			KeyLookup:      fmt.Sprintf("%s:%s", "cookie", viper.GetString("app.name")),
-			CookieSecure:   true,
-			CookieHTTPOnly: true,
-			// Storage:        datasources.RedisStorage,
-		}
-		logFileWriter := &datasources.LogFileWriter{LogPath: "./log/gofiber-skelton", PrintConsole: true}
-		logConfig = logger.Config{
-			Format:     "[${blue}${time}${reset}] ${status} - ${ip},${ips} ${method} ${host} ${url}\tUserAgent:	${ua}\tReferer: ${referer}\tAuthorization: ${header:Authorization}\tBytesReceived: ${bytesReceived}\tBytesSent: ${bytesSent}\tError: ${red}${error}${reset}\n",
-			TimeFormat: "2006-01-02 15:04:05",
-			Output:     logFileWriter,
-		}
-	} else {
-		sessConfig = session.ConfigDefault
-		logConfig = logger.Config{
-			Format:     "[${blue}${time}${reset}] ${status} - ${ip},${ips} ${method} ${host} ${url}\nUserAgent:\t${ua}\nReferer:\t${referer}\nAuthorization:\t${header:Authorization}\nBytesReceived:\t${bytesReceived}\nBytesSent:\t${bytesSent}\nError:\t${red}${error}${reset}\n",
-			TimeFormat: "2006-01-02 15:04:05",
-		}
-	}
-
-	// Init session
-	// datasources.SessStore = session.New(sessConfig)
-
 	return
 }

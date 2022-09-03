@@ -1,0 +1,5 @@
+app:
+  name: "ccxt-proxy"
+  env: "development"
+  port:
+    http: 8080
